@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
@@ -143,3 +144,14 @@ void loop() {
     delay(200);
 }
 
+=======
+void setup() {
+  // put your setup code here, to run once:
+
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+
+}
+>>>>>>> 9cb20efe7589eac87c00975feeb3d16119eb70b6
