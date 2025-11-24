@@ -1,112 +1,170 @@
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <PubSubClient.h>
-#include <Servo.h>
+#include <WiFiClientSecure.h>   // Biblioteca para conexão WiFi segura (SSL/TLS)
+#include <PubSubClient.h>       // Biblioteca para MQTT
+#include <WiFi.h>               // Biblioteca principal do WiFi no ESP32
+#include <ESP32Servo.h>         // Biblioteca para controlar servos no ESP32
 
-const String SSID = "FIESC_IOT_EDU";
-const String PASS = "8120gv08";
+#define PINO_LED 2              // LED no pino 2
+#define TRIG 26                 // Pino TRIG do ultrassom
+#define ECHO 25                 // Pino ECHO do ultrassom
+#define PINO_SERVO 19           // ⚠️ Esse nome se repete, erro no código
+#define PINO_SERVO 18           // ⚠️ O segundo substitui o primeiro → deve corrigir
+#define PINO_PRESENCA 14        // Sensor PIR no pino 14
 
-const char* mqtt_host = "810a9479164b4b4d81ba1c4879369294.s1.eu.hivemq.cloud";
-const uint16_t mqtt_port = 883;
-const char* mqtt_client_id = "Node_S3";
-const char* MQTT_USER = "SEU_USUARIO";     
-const char* MQTT_PASS = "SUA_SENHA";       
+WiFiClientSecure client;        // Cliente WiFi seguro
+PubSubClient mqtt(client);      // Cliente MQTT usando WiFi seguro
 
-WiFiClientSecure secureClient;
-PubSubClient client(secureClient);
+Servo servo3;                   // Servo 1
+Servo servo4;                   // Servo 2 
 
-#define TRIG_PIN 5
-#define ECHO_PIN 18
-#define LED_PIN 2
-#define SERVO1_PIN 12
-#define SERVO2_PIN 13
+const char* SSID = "FIESC_IOT_EDU";     // Nome da rede WiFi
+const char* PASS = "8120gv08";          // Senha da rede
 
-Servo servo1;
-Servo servo2;
+// Dados do broker MQTT HiveMQ Cloud
+const char* BROKER_URL  = "810a9479164b4b4d81ba1c4879369294.s1.eu.hivemq.cloud";
+const int   BROKER_PORT = 8883;         // Porta segura TLS
+const char* BROKER_USER = "Placa_3";
+const char* BROKER_PASS = "Placa123";
 
-void setup_wifi() {
-  WiFi.begin(SSID.c_str(), PASS.c_str());
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-  }
-}
+// Tópicos MQTT de envio
+const char* TOPIC_PUBLISH_PRESENCA = "Projeto S3 Presenca3";
+const char* TOPIC_PUBLISH_OBJETO   = "Projeto S3 Ultrassom3";
 
-void reconnect() {
-  while (!client.connected()) {
-    bool ok;
-    if (MQTT_USER[0] == '\0') {
-      ok = client.connect(mqtt_client_id);
-    } else {
-      ok = client.connect(mqtt_client_id, MQTT_USER, MQTT_PASS);
-    }
-    if (ok) {
-      client.subscribe("S3/Servo1");
-      client.subscribe("S3/Servo2");
-    } else {
-      delay(3000);
-    }
-  }
-}
+// Tópico de entrada (controle de LED)
+const char* TOPICO_SUBSCRIBE = "S1 iluminacao";
 
-void callback(char* topic, byte* payload, unsigned int length) {
-  String message;
-  for (unsigned int i = 0; i < length; i++) message += (char)payload[i];
+// Tópicos da S2 para acionar servos
+const char* TOPIC_PUBLISH_1 = "Projeto S2 Distancia1";
+const char* TOPIC_PUBLISH_2 = "Projeto S2 Distancia2";
 
-  if (String(topic) == "S3/Servo1") {
-    int angle = message.toInt();
-    if (angle < 0) angle = 0;
-    if (angle > 180) angle = 180;
-    servo1.write(angle);
-  } else if (String(topic) == "S3/Servo2") {
-    int angle = message.toInt();
-    if (angle < 0) angle = 0;
-    if (angle > 180) angle = 180;
-    servo2.write(angle);
-  }
-}
+unsigned long lastPublish = 0;  // Controle do tempo de envio
+int publishInterval = 3000;     // Envia a cada 3 segundos
 
-float medirDistancia() {
-  digitalWrite(TRIG_PIN, LOW);
+// Função que mede distância com sensor ultrassônico
+long medirDistancia(int trigPin, int echoPin) {
+  digitalWrite(trigPin, LOW);       // Limpa TRIG
   delayMicroseconds(2);
-  digitalWrite(TRIG_PIN, HIGH);
+  digitalWrite(trigPin, HIGH);      // Pulso de 10μs
   delayMicroseconds(10);
-  digitalWrite(TRIG_PIN, LOW);
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000); // timeout 30ms
-  if (duration == 0) return 999.0;
-  float distance = duration * 0.034 / 2;
-  return distance;
+  digitalWrite(trigPin, LOW);
+
+  long duracao = pulseIn(echoPin, HIGH, 30000);  // Tempo do eco
+  long distancia = (duracao * 0.034) / 2;        // Converte para cm
+
+  return distancia;
+}
+
+// Função chamada sempre que chega mensagem MQTT
+void callback(char* topic, byte* payload, unsigned int length) {
+  String mensagem;
+
+  for (int i = 0; i < length; i++) {
+    mensagem += (char)payload[i];    // Converte bytes para string
+  }
+
+  // Controle do LED via MQTT
+  if (mensagem == "acender") {
+    digitalWrite(PINO_LED, HIGH);
+  } else if (mensagem == "apagar") {
+    digitalWrite(PINO_LED, LOW);
+  }
+
+  // Controle do servomotor conforme mensagens da S2
+  else if (String(topic) == TOPIC_PUBLISH_1) {
+    if (mensagem == "objeto_proximo") {
+      servo3.write(90);              // Servo 1 abre
+    } else if (mensagem == "objeto_longe") {
+      servo3.write(45);              // Servo 1 fecha
+    }
+
+  } else if (String(topic) == TOPIC_PUBLISH_2) {
+    if (mensagem == "objeto_proximo") {
+      servo4.write(90);              // Servo 2 abre
+    } else if (mensagem == "objeto_longe") {
+      servo4.write(45);              // Servo 2 fecha
+    }
+  }
+
+  Serial.println(mensagem);          // Exibe mensagem recebida
+}
+
+// Conecta ao WiFi
+void conectarWiFi() {
+  Serial.print("Conectando ao WiFi...");
+  WiFi.begin(SSID, PASS);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(300);
+  }
+  Serial.println("\nWiFi conectado!");
+}
+
+// Conecta ao servidor MQTT
+void conectarMQTT() {
+  mqtt.setServer(BROKER_URL, BROKER_PORT);   // Define broker
+  client.setInsecure();                      // Não verifica certificado
+  mqtt.setCallback(callback);                // Função de retorno
+
+  while (!mqtt.connected()) {
+    Serial.print("Conectando ao broker...");
+
+    String clientId = "S3_" + String(random(0xffff), HEX);  // ID único
+
+    if (mqtt.connect(clientId.c_str(), BROKER_USER, BROKER_PASS)) {
+      Serial.println("Conectado!");
+
+      // Inscreve nos tópicos
+      mqtt.subscribe(TOPICO_SUBSCRIBE);
+      mqtt.subscribe(TOPIC_PUBLISH_1);
+      mqtt.subscribe(TOPIC_PUBLISH_2);
+      mqtt.subscribe("Projeto/S3/Controle");
+
+    } else {
+      Serial.print("Falha. Código: ");
+      Serial.println(mqtt.state());
+      delay(1500);
+    }
+  }
 }
 
 void setup() {
   Serial.begin(115200);
-  pinMode(TRIG_PIN, OUTPUT);
-  pinMode(ECHO_PIN, INPUT);
-  pinMode(LED_PIN, OUTPUT);
 
-  servo1.attach(SERVO1_PIN);
-  servo2.attach(SERVO2_PIN);
+  pinMode(PINO_LED, OUTPUT);
+  pinMode(PINO_PRESENCA, INPUT);
+  pinMode(TRIG, OUTPUT);
+  pinMode(ECHO, INPUT);
 
-  setup_wifi();
+  servo3.attach(PINO_SERVO);      
+  servo3.write(0);
 
-  secureClient.setInsecure(); // remove se for usar CA válido
-  client.setServer(mqtt_host, mqtt_port);
-  client.setCallback(callback);
+  conectarWiFi();
+  conectarMQTT();
 }
 
 void loop() {
-  if (!client.connected()) reconnect();
-  client.loop();
+  if (!mqtt.connected()) conectarMQTT();  // Reconnect automático
+  mqtt.loop();                            // Processa MQTT
 
-  float distancia = medirDistancia();
+  long distancia = medirDistancia(TRIG, ECHO);
+  Serial.println(distancia);
 
-  if (distancia < 10.0) {
-    digitalWrite(LED_PIN, HIGH);
-    client.publish("S3/Presenca", "1");
-  } else {
-    digitalWrite(LED_PIN, LOW);
-    client.publish("S3/Presenca", "0");
+  // Publica mensagem dependendo da distância
+  if (distancia > 0 && distancia < 10) {
+    mqtt.publish(TOPIC_PUBLISH_1, "objeto_proximo");
+  } else if (distancia > 10) {
+    mqtt.publish(TOPIC_PUBLISH_2, "objeto_longe");
   }
 
-  delay(1500);
-}
+  // Publica presença a cada 3 segundos
+  unsigned long agora = millis();
+  if (agora - lastPublish >= publishInterval) {
+    lastPublish = agora;
+    int presenca = digitalRead(PINO_PRESENCA);
+    mqtt.publish(TOPIC_PUBLISH_PRESENCA, String(presenca).c_str());
+    Serial.print("Presença publicada: ");
+    Serial.println(presenca);
+  }
 
+  delay(20);   // Pequeno delay para estabilizar
+}
