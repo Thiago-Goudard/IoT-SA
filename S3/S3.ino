@@ -126,6 +126,7 @@ void setup() {
   pinMode(PINO_PRESENCA, INPUT);
   pinMode(TRIG, OUTPUT);
   pinMode(ECHO, INPUT);
+  //output enviar, imput ler
 
   servo3.attach(PINO_SERVO1);
   servo4.attach(PINO_SERVO2);
