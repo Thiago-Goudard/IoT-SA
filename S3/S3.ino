@@ -1,3 +1,4 @@
+//Definição de Bibliotecas e Pinos
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
@@ -10,6 +11,7 @@
 #define PINO_SERVO2 18
 #define PINO_PRESENCA 14
 
+//Objetos e Conexão
 WiFiClientSecure client;
 PubSubClient mqtt(client);
 
@@ -24,6 +26,8 @@ const int   BROKER_PORT = 8883;
 const char* BROKER_USER = "Placa_3";
 const char* BROKER_PASS = "Placa123";
 
+//Tópicos MQTT
+//Os tópicos são como canais de comunicação.
 const char* TOPIC_PUBLISH_PRESENCA = "Projeto S3 Presenca3";
 const char* TOPIC_PUBLISH_OBJETO   = "Projeto S3 Ultrassom3";
 
@@ -36,6 +40,7 @@ unsigned long lastPublish = 0;
 int publishInterval = 3000;
 
 long medirDistancia(int trigPin, int echoPin) {
+//Esta função calcula a distância em centímetros usando o Sensor Ultrassônico
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
@@ -43,11 +48,12 @@ long medirDistancia(int trigPin, int echoPin) {
   digitalWrite(trigPin, LOW);
 
   long duracao = pulseIn(echoPin, HIGH, 30000);
-  long distancia = (duracao * 0.034) / 2;
+  long distancia = (duracao * 0.034) / 2;// usado para calcular a velocidade do som
 
   return distancia;
 }
-
+//Função de Callback
+//recebe comandos e reaje
 void callback(char* topic, byte* payload, unsigned int length) {
   String mensagem;
 
@@ -61,6 +67,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   else if (mensagem == "apagar") {
     digitalWrite(PINO_LED, LOW);
   } 
+    //Controle do Servo 1
   else if (String(topic) == TOPIC_PUBLISH_1) {
     if (mensagem == "objeto_proximo") {
       servo3.write(90);
@@ -68,6 +75,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
       servo3.write(45);
     }
   } 
+    //Controle do Servo 2
   else if (String(topic) == TOPIC_PUBLISH_2) {
     if (mensagem == "objeto_proximo") {
       servo4.write(90);
@@ -78,7 +86,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
   Serial.println(mensagem);
 }
-
+//Funções de Conexão
+//WIFI
 void conectarWiFi() {
   WiFi.begin(SSID, PASS);
   while (WiFi.status() != WL_CONNECTED) {
@@ -86,6 +95,7 @@ void conectarWiFi() {
   }
 }
 
+//Configura o broker
 void conectarMQTT() {
   mqtt.setServer(BROKER_URL, BROKER_PORT);
   client.setInsecure();
@@ -94,6 +104,7 @@ void conectarMQTT() {
   while (!mqtt.connected()) {
     String clientId = "S3_" + String(random(0xffff), HEX);
 
+    //Subscrever
     if (mqtt.connect(clientId.c_str(), BROKER_USER, BROKER_PASS)) {
       mqtt.subscribe(TOPICO_SUBSCRIBE);
       mqtt.subscribe(TOPIC_PUBLISH_1);
@@ -106,6 +117,7 @@ void conectarMQTT() {
   }
 }
 
+//Configuração e Loop Principal  ----Pinos: Entrada ou saida
 void setup() {
   Serial.begin(115200);
 
@@ -119,10 +131,12 @@ void setup() {
   servo3.write(0);
   servo4.write(0);
 
+  //Coloca o sistema online
   conectarWiFi();
   conectarMQTT();
 }
 
+//Leitura do Ultrassom
 void loop() {
   if (!mqtt.connected()) conectarMQTT();
   mqtt.loop();
