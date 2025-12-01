@@ -36,16 +36,16 @@ const char* TOPICO_SUBSCRIBE = "S1 iluminacao";
 const char* TOPIC_PUBLISH_1 = "Projeto S2 Distancia1";
 const char* TOPIC_PUBLISH_2 = "Projeto S2 Distancia2";
 
-unsigned long lastPublish = 0;
+unsigned long lastPublish = 0;//é um contador de tempo
 int publishInterval = 3000;
 
 long medirDistancia(int trigPin, int echoPin) {
 //Esta função calcula a distância em centímetros usando o Sensor Ultrassônico
-  digitalWrite(trigPin, LOW);
+  digitalWrite(trigPin, LOW);//Prepara o pino.
   delayMicroseconds(2);
-  digitalWrite(trigPin, HIGH);
+  digitalWrite(trigPin, HIGH);//Dispara o pulso que avisa o sensor para emitir o som ultrassônico.
   delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
+  digitalWrite(trigPin, LOW);//Finaliza o pulso.
 
   long duracao = pulseIn(echoPin, HIGH, 30000);
   long distancia = (duracao * 0.034) / 2;// usado para calcular a velocidade do som
@@ -53,12 +53,13 @@ long medirDistancia(int trigPin, int echoPin) {
   return distancia;
 }
 //Função de Callback
-//recebe comandos e reaje
+//recebe comandos e reaje: raduzir a mensagem recebida em uma ação física como ligar o LED ou mover um servo.
 void callback(char* topic, byte* payload, unsigned int length) {
   String mensagem;
 
   for (int i = 0; i < length; i++) {
     mensagem += (char)payload[i];
+    //Recebe comando e meche o servo
   }
 
   if (mensagem == "acender") {
@@ -98,7 +99,7 @@ void conectarWiFi() {
 //Configura o broker
 void conectarMQTT() {
   mqtt.setServer(BROKER_URL, BROKER_PORT);
-  client.setInsecure();
+  client.setInsecure();//pertmite a conec com o HiveMQ
   mqtt.setCallback(callback);
 
   while (!mqtt.connected()) {
